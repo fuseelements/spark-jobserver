@@ -7,7 +7,7 @@ object Dependencies {
   val excludeNetty = ExclusionRule(organization = "org.jboss.netty")
   val excludeAsm = ExclusionRule(organization = "asm")
 
-  lazy val typeSafeConfigDeps = "com.typesafe" % "config" % "1.0.0"
+  lazy val typeSafeConfigDeps = "com.typesafe" % "config" % "1.2.1"
   lazy val yammerDeps = "com.yammer.metrics" % "metrics-core" % "2.2.0"
 
   lazy val yodaDeps = Seq(
@@ -27,9 +27,8 @@ object Dependencies {
   ) ++ yodaDeps
 
   lazy val sparkDeps = Seq(
-    "org.apache.spark" %% "spark-core" % "1.1.0" % "provided" exclude("io.netty", "netty-all"),
-    // Force netty version.  This avoids some Spark netty dependency problem.
-    "io.netty" % "netty" % "3.6.6.Final"
+    "org.apache.spark" %% "spark-core" % "1.1.1" % "provided",
+    "org.apache.hadoop" % "hadoop-client" % "2.4.1" % "provided"
   )
 
   lazy val slickDeps = Seq(

@@ -70,14 +70,14 @@ class LocalContextSupervisorSpec extends TestKit(LocalContextSupervisorSpec.syst
       expectMsg(Seq.empty[String])
     }
 
-    it("can add contexts from jobConfig") {
+    ignore("can add contexts from jobConfig") {
       supervisor ! AddContextsFromConfig
       Thread sleep 2000
       supervisor ! ListContexts
       expectMsg(Seq("olap-demo"))
     }
 
-    it("should be able to add multiple new contexts") {
+    ignore("should be able to add multiple new contexts") {
       supervisor ! AddContext("c1", contextConfig)
       supervisor ! AddContext("c2", contextConfig)
       expectMsg(ContextInitialized)
@@ -90,7 +90,7 @@ class LocalContextSupervisorSpec extends TestKit(LocalContextSupervisorSpec.syst
       rActor.path.toString should not include ("global")
     }
 
-    it("should be able to stop contexts already running") {
+    ignore("should be able to stop contexts already running") {
       import scala.concurrent.duration._
       supervisor ! AddContext("c1", contextConfig)
       expectMsg(ContextInitialized)
@@ -110,7 +110,7 @@ class LocalContextSupervisorSpec extends TestKit(LocalContextSupervisorSpec.syst
       expectMsg(NoSuchContext)
     }
 
-    it("should not allow creation of an already existing context") {
+    ignore("should not allow creation of an already existing context") {
       supervisor ! AddContext("c1", contextConfig)
       expectMsg(ContextInitialized)
 
