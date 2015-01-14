@@ -27,7 +27,8 @@ object Dependencies {
   ) ++ yodaDeps
 
   lazy val sparkDeps = Seq(
-    "org.apache.spark" %% "spark-core" % "1.1.1" % "provided",
+    ("org.apache.spark" %% "spark-core" % "1.1.1" % "provided").
+      excludeAll(ExclusionRule(organization = "org.apache.hadoop")),
     "org.apache.hadoop" % "hadoop-client" % "2.4.1" % "provided"
   )
 
