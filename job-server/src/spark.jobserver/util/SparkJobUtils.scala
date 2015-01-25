@@ -40,6 +40,10 @@ object SparkJobUtils {
     // Set the Jetty port to 0 to find a random port
     conf.set("spark.ui.port", "0")
 
+    // Set spark broadcast factory in yarn-client mode
+    if (config.getString("spark.master") == "yarn-client")
+      conf.set("spark.broadcast.factory", config.getString("spark.jobserver.yarn-broadcast-factory"))
+
     // Set number of akka threads
     // TODO: need to figure out how many extra threads spark needs, besides the job threads
     conf.set("spark.akka.threads", (getMaxRunningJobs(config) + 4).toString)
@@ -47,6 +51,16 @@ object SparkJobUtils {
     // Set any other settings in context config that start with "spark"
     for (e <- contextConfig.entrySet().asScala if e.getKey.startsWith("spark.")) {
       conf.set(e.getKey, e.getValue.unwrapped.toString)
+    }
+
+    // Set any other settings in context config that start with "passthrough"
+    // These settings will be directly set in sparkConf, but with "passthrough." stripped
+    // This is useful for setting configurations for hadoop connectors such as
+    // elasticsearch, cassandra, etc.
+    for (e <- Try(contextConfig.getConfig("passthrough"))) {
+         e.entrySet().asScala.map { s=>
+            conf.set(s.getKey, s.getValue.unwrapped.toString)
+         }
     }
 
     conf
@@ -58,5 +72,17 @@ object SparkJobUtils {
   def getMaxRunningJobs(config: Config): Int = {
     val cpuCores = Runtime.getRuntime.availableProcessors
     Try(config.getInt("spark.jobserver.max-jobs-per-context")).getOrElse(cpuCores)
+  }
+
+  /**
+   * According "spark.master", returns the timeout of create sparkContext
+   */
+  def getContextTimeout(config: Config): Int = {
+    config.getString("spark.master") match {
+      case "yarn-client" =>
+        Try(config.getMilliseconds("spark.jobserver.yarn-context-creation-timeout").toInt / 1000).getOrElse(40)
+      case _               =>
+        Try(config.getMilliseconds("spark.jobserver.context-creation-timeout").toInt / 1000).getOrElse(15)
+    }
   }
 }
