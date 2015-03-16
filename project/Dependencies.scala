@@ -29,9 +29,12 @@ object Dependencies {
 
   lazy val sparkDeps = {
     val sparkVersion = sys.env.getOrElse("SPARK_VERSION", "1.3.0")
+    val exludeHadoop1Client = ExclusionRule(organization = "org.apache.hadoop")
     Seq(
     "org.apache.spark" %% "spark-core" % sparkVersion % "provided" exclude(
-                                            "io.netty", "netty-all") excludeAll(excludeQQ),
+                                            "io.netty", "netty-all") excludeAll(excludeQQ)
+                                            excludeAll(exludeHadoop1Client),
+    "org.apache.hadoop" % "hadoop-client" % "2.4.1" % "provided",
     "org.apache.spark" %% "spark-sql" % sparkVersion % "provided" exclude(
                                             "io.netty", "netty-all") excludeAll(excludeQQ),
     // Force netty version.  This avoids some Spark netty dependency problem.
