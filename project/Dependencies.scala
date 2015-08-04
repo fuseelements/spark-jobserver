@@ -26,9 +26,11 @@ object Dependencies {
     yammerDeps
   ) ++ yodaDeps
 
-  val sparkVersion = sys.env.getOrElse("SPARK_VERSION", "1.3.1")
+  val exludeHadoop1Client = ExclusionRule(organization = "org.apache.hadoop")
+  val sparkVersion = sys.env.getOrElse("SPARK_VERSION", "1.4.1")
   lazy val sparkDeps = Seq(
-    "org.apache.spark" %% "spark-core" % sparkVersion % "provided" excludeAll(excludeNettyIo, excludeQQ),
+    "org.apache.spark" %% "spark-core" % sparkVersion % "provided" excludeAll(excludeNettyIo, excludeQQ) excludeAll(exludeHadoop1Client),
+    "org.apache.hadoop" % "hadoop-client" % "2.6.0" % "provided",
     // Force netty version.  This avoids some Spark netty dependency problem.
     "io.netty" % "netty-all" % "4.0.23.Final"
   )
