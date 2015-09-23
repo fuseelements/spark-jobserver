@@ -1,3 +1,4 @@
+---
 language: scala
 env:
   global:
@@ -6,7 +7,7 @@ scala:
    - 2.10.4
    - 2.11.6
 addons:
-  artifacts: true
+  artifacts:
     paths:
       - "job-server/target/scala-2.10/spark-job-server.jar"
       - "bin/server_start.sh"
