@@ -5,3 +5,11 @@ env:
 scala:
    - 2.10.4
    - 2.11.6
+addons:
+  artifacts: true
+    paths:
+      - "job-server/target/scala-2.10/spark-job-server.jar"
+      - "bin/server_start.sh"
+      - "bin/server_stop.sh"
+      - "config/log4j-server.properties"
+  s3_region: "us-east-1"
