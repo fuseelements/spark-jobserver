@@ -5,9 +5,11 @@ env:
 scala:
    - 2.10.4
 script:
+  - sbt ++$TRAVIS_SCALA_VERSION job-server/assembly
   - sbt ++$TRAVIS_SCALA_VERSION job-server-extras/assembly
 addons:
   artifacts:
     paths:
       - "job-server/target/scala-2.10/spark-job-server.jar"
+      - "job-server-extras/target/scala-2.10/spark-job-server.jar"
   s3_region: "us-east-1"
