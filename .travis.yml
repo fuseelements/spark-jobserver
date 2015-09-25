@@ -5,3 +5,8 @@ env:
 scala:
    - 2.10.4
    - 2.11.6
+addons:
+  artifacts:
+    paths:
+      - "job-server/target/scala-2.10/spark-job-server.jar"
+  s3_region: "us-east-1"
