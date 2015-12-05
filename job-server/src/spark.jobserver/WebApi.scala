@@ -1,5 +1,7 @@
 package spark.jobserver
 
+import java.util.concurrent.TimeUnit
+
 import akka.actor.{ ActorSystem, ActorRef }
 import akka.pattern.ask
 import akka.util.Timeout
@@ -12,7 +14,7 @@ import org.slf4j.LoggerFactory
 import spark.jobserver.util.SparkJobUtils
 import spark.jobserver.util.SSLContextFactory
 import spark.jobserver.routes.DataRoutes
-import scala.concurrent.{Await, ExecutionContext}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.Try
 import spark.jobserver.io.JobInfo
 import spark.jobserver.auth._
@@ -56,7 +58,7 @@ object WebApi {
   }
 
   def resultToTable(result: Any): Map[String, Any] = {
-    Map(StatusKey -> "OK", ResultKey -> result)
+    Map(ResultKey -> result)
   }
 
   def formatException(t: Throwable): Any =
@@ -71,6 +73,19 @@ object WebApi {
         "errorClass" -> t.getClass.getName,
         "stack" -> t.getStackTrace.map(_.toString).toSeq)
     }
+
+  def getJobReport(jobInfo: JobInfo): Map[String, Any] = {
+    Map("jobId" -> jobInfo.jobId,
+      "startTime" -> jobInfo.startTime.toString(),
+      "classPath" -> jobInfo.classPath,
+      "context" -> (if (jobInfo.contextName.isEmpty) "<<ad-hoc>>" else jobInfo.contextName),
+      "duration" -> getJobDurationString(jobInfo)) ++ (jobInfo match {
+        case JobInfo(_, _, _, _, _, None, _) => Map(StatusKey -> "RUNNING")
+        case JobInfo(_, _, _, _, _, _, Some(ex)) => Map(StatusKey -> "ERROR",
+          ResultKey -> formatException(ex))
+        case JobInfo(_, _, _, _, _, Some(e), None) => Map(StatusKey -> "FINISHED")
+      })
+  }
 }
 
 class WebApi(system: ActorSystem,
@@ -80,7 +95,7 @@ class WebApi(system: ActorSystem,
              dataManager: ActorRef,
              supervisor: ActorRef,
              jobInfo: ActorRef)
-    extends HttpService with CommonRoutes with DataRoutes with SJSAuthenticator {
+    extends HttpService with CommonRoutes with DataRoutes with SJSAuthenticator with CORSSupport {
   import CommonMessages._
   import ContextSupervisor._
   import scala.concurrent.duration._
@@ -91,7 +106,8 @@ class WebApi(system: ActorSystem,
 
   override def actorRefFactory: ActorSystem = system
   implicit val ec: ExecutionContext = system.dispatcher
-  implicit val ShortTimeout = Timeout(3 seconds)
+  implicit val ShortTimeout =
+    Timeout(config.getDuration("spark.jobserver.short-timeout", TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS)
   val DefaultSyncTimeout = Timeout(10 seconds)
   val DefaultJobLimit = 50
   val StatusKey = "status"
@@ -102,8 +118,10 @@ class WebApi(system: ActorSystem,
 
   val logger = LoggerFactory.getLogger(getClass)
 
-  val myRoutes = jarRoutes ~ contextRoutes ~ jobRoutes ~
-                 dataRoutes ~ healthzRoutes ~ otherRoutes
+  val myRoutes = cors {
+    jarRoutes ~ contextRoutes ~ jobRoutes ~
+      dataRoutes ~ healthzRoutes ~ otherRoutes
+  }
 
   lazy val authenticator: AuthMagnet[AuthInfo] = {
     if (config.getBoolean("shiro.authentication")) {
@@ -260,6 +278,36 @@ class WebApi(system: ActorSystem,
               }
             }
           }
+        } ~
+        put {
+          parameter("reset") { reset =>
+            respondWithMediaType(MediaTypes.`text/plain`) { ctx =>
+              reset match {
+                case "reboot" => {
+                  import ContextSupervisor._
+                  import collection.JavaConverters._
+                  import java.util.concurrent.TimeUnit
+
+                  logger.warn("refreshing contexts")
+                  val future = (supervisor ? ListContexts).mapTo[Seq[String]]
+                  val lookupTimeout = Try(config.getDuration("spark.jobserver.context-lookup-timeout",
+                    TimeUnit.MILLISECONDS).toInt / 1000).getOrElse(1)
+                  val contexts = Await.result(future, lookupTimeout.seconds).asInstanceOf[Seq[String]]
+
+                  val stopFutures = contexts.map(c => supervisor ? StopContext(c))
+                  Await.ready(Future.sequence(stopFutures), contextTimeout.seconds)
+
+                  Thread.sleep(1000) // we apparently need some sleeping in here, so spark can catch up
+
+                  (supervisor ? AddContextsFromConfig).onFailure {
+                    case t => ctx.complete("ERROR")
+                  }
+                  ctx.complete(StatusCodes.OK)
+                }
+                case _ => ctx.complete("ERROR")
+              }
+            }
+          }
         }
     }
   }
@@ -321,21 +369,25 @@ class WebApi(system: ActorSystem,
           }
         }
       } ~
-        // GET /jobs/<jobId>  returns the result in JSON form in a table
-        //  JSON result always starts with: {"status": "ERROR" / "OK" / "RUNNING"}
+        // GET /jobs/<jobId>
+        // Returns job information in JSON.
         // If the job isn't finished yet, then {"status": "RUNNING" | "ERROR"} is returned.
+        // Returned JSON contains result attribute if status is "FINISHED"
         (get & path(Segment)) { jobId =>
-          val future = jobInfo ? GetJobResult(jobId)
+          val statusFuture = jobInfo ? GetJobStatus(jobId)
           respondWithMediaType(MediaTypes.`application/json`) { ctx =>
-            future.map {
+            statusFuture.map {
               case NoSuchJobId =>
                 notFound(ctx, "No such job ID " + jobId.toString)
-              case JobInfo(_, _, _, _, _, None, _) =>
-                ctx.complete(Map(StatusKey -> "RUNNING"))
-              case JobInfo(_, _, _, _, _, _, Some(ex)) =>
-                ctx.complete(Map(StatusKey -> "ERROR", "ERROR" -> formatException(ex)))
-              case JobResult(_, result) =>
-                ctx.complete(resultToTable(result))
+              case info: JobInfo =>
+                val jobReport = getJobReport(info)
+                val resultFuture = jobInfo ? GetJobResult(jobId)
+                resultFuture.map {
+                  case JobResult(_, result) =>
+                    ctx.complete(jobReport ++ resultToTable(result))
+                  case _ =>
+                    ctx.complete(jobReport)
+                }
             }
           }
         } ~
@@ -343,7 +395,7 @@ class WebApi(system: ActorSystem,
         //  Stop the current job. All other jobs submited with this spark context
         //  will continue to run
         (delete & path(Segment)) { jobId =>
-          val future = jobInfo ? GetJobResult(jobId)
+          val future = jobInfo ? GetJobStatus(jobId)
           respondWithMediaType(MediaTypes.`application/json`) { ctx =>
             future.map {
               case NoSuchJobId =>
@@ -354,8 +406,8 @@ class WebApi(system: ActorSystem,
                 ctx.complete(Map(StatusKey -> "KILLED"))
               case JobInfo(_, _, _, _, _, _, Some(ex)) =>
                 ctx.complete(Map(StatusKey -> "ERROR", "ERROR" -> formatException(ex)))
-              case JobResult(_, result) =>
-                ctx.complete(resultToTable(result))
+              case JobInfo(_, _, _, _, _, Some(e), None) =>
+                notFound(ctx, "No running job with ID " + jobId.toString)
             }
           }
         } ~
@@ -373,16 +425,7 @@ class WebApi(system: ActorSystem,
             respondWithMediaType(MediaTypes.`application/json`) { ctx =>
               future.map { infos =>
                 val jobReport = infos.map { info =>
-                  Map("jobId" -> info.jobId,
-                    "startTime" -> info.startTime.toString(),
-                    "classPath" -> info.classPath,
-                    "context" -> (if (info.contextName.isEmpty) "<<ad-hoc>>" else info.contextName),
-                    "duration" -> getJobDurationString(info)) ++ (info match {
-                      case JobInfo(_, _, _, _, _, None, _) => Map(StatusKey -> "RUNNING")
-                      case JobInfo(_, _, _, _, _, _, Some(ex)) => Map(StatusKey -> "ERROR",
-                        ResultKey -> formatException(ex))
-                      case JobInfo(_, _, _, _, _, Some(e), None) => Map(StatusKey -> "FINISHED")
-                    })
+                  getJobReport(info)
                 }
                 ctx.complete(jobReport)
               }
