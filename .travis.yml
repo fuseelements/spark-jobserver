@@ -3,7 +3,7 @@ language: scala
 env:
   global:
     - _JAVA_OPTIONS="-Xmx1500m -XX:MaxPermSize=512m -Dakka.test.timefactor=3"
-    - SPARK_VERSION=1.6.0
+    - SPARK_VERSION=1.6.1
 scala:
    - 2.10.4
 script:
