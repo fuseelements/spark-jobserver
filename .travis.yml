@@ -9,9 +9,19 @@ scala:
 script:
   #- sbt ++$TRAVIS_SCALA_VERSION clean job-server/assembly
   - sbt ++$TRAVIS_SCALA_VERSION clean job-server-extras/assembly
+	# Tricks to avoid unnecessary cache updates.
+  - find $HOME/.sbt -name "*.lock" | xargs rm
+  - find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
+
 addons:
   artifacts:
     paths:
       - "job-server/target/scala-2.10/spark-job-server.jar"
       - "job-server-extras/target/scala-2.10/spark-job-server.jar"
   s3_region: "us-east-1"
+
+# See http://www.scala-sbt.org/0.13/docs/Travis-CI-with-sbt.html#%28Experimental%29+Reusing+Ivy+cache
+cache:
+  directories:
+    - $HOME/.ivy2/cache
+    - $HOME/.sbt/boot/
