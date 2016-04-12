@@ -16,7 +16,7 @@ script:
 addons:
   artifacts:
     paths:
-      - "job-server/target/scala-2.10/spark-job-server.jar"
+      #- "job-server/target/scala-2.10/spark-job-server.jar"
       - "job-server-extras/target/scala-2.10/spark-job-server.jar"
   s3_region: "us-east-1"
 
