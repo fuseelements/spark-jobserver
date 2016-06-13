@@ -5,7 +5,10 @@ env:
     - _JAVA_OPTIONS="-Xmx1500m -XX:MaxPermSize=512m -Dakka.test.timefactor=3"
     - SPARK_VERSION=1.6.1
 scala:
-   - 2.10.4
+   - 2.10.6
+jdk:
+   #- oraclejdk8
+   - oraclejdk7
 script:
   #- sbt ++$TRAVIS_SCALA_VERSION clean job-server/assembly
   - sbt ++$TRAVIS_SCALA_VERSION clean job-server-extras/assembly
