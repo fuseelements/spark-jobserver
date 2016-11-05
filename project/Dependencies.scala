@@ -13,11 +13,15 @@ object Dependencies {
     "joda-time" % "joda-time" % jodaTime
   )
 
+  // See <https://github.com/sbt/sbt/issues/1518> why the simple exclude for a scala dependency does not work.
+  val excludeAkkaRemotes = Seq("0", "1", "2").map(x => ExclusionRule(organization = "com.typesafe.akka", name = "akka-remote_2.1" + x))
+
   lazy val akkaDeps = Seq(
     // Akka is provided because Spark already includes it, and Spark's version is shaded so it's not safe
     // to use this one
     "com.typesafe.akka" %% "akka-slf4j" % akka % "provided",
-    "com.typesafe.akka" %% "akka-cluster" % akka exclude("com.typesafe.akka", "akka-remote"),
+    // See <https://github.com/sbt/sbt/issues/1518> why the simple exclude for a scala dependency does not work.
+    "com.typesafe.akka" %% "akka-cluster" % akka excludeAll(excludeAkkaRemotes : _*),
     "io.spray" %% "spray-json" % sprayJson,
     "io.spray" %% "spray-can" % spray,
     "io.spray" %% "spray-caching" % spray,
